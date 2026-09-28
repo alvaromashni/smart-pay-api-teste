@@ -1,6 +1,6 @@
 # API de teste de cobrança — guia rápido
 
-Oi Alexandro. Esta API simula cobranças para você testar a comunicação HTTP entre a PCB (ESP32) e o servidor, **sem mexer com dinheiro de verdade**. Você manda uma cobrança, ela responde na hora com o resultado que você pedir (aprovada, recusada ou erro). Serve para você validar o fluxo de request/response do lado do microcontrolador.
+Esta API simula cobranças para você testar a comunicação HTTP entre a PCB e o servidor, **sem mexer com dinheiro de verdade**. Você manda uma cobrança, ela responde na hora com o resultado que você pedir (aprovada, recusada ou erro). Serve para você validar o fluxo de request/response do lado do microcontrolador.
 
 ## O básico
 
