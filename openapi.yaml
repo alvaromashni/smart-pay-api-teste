@@ -1,0 +1,300 @@
+openapi: 3.0.3
+info:
+  title: API de teste de cobrança
+  version: 1.0.0
+  description: |
+    API descartável de bancada para testar a comunicação entre uma PCB com ESP32
+    e a nuvem. Não realiza pagamentos reais e mantém todo o estado em memória.
+servers:
+  - url: http://localhost:8080
+    description: Servidor local
+tags:
+  - name: Cobranças
+  - name: Infraestrutura
+paths:
+  /health:
+    get:
+      tags: [Infraestrutura]
+      summary: Verifica a saúde do servidor
+      operationId: obterSaude
+      security: []
+      responses:
+        "200":
+          description: Servidor disponível
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                status: ok
+  /v1/charges:
+    get:
+      tags: [Cobranças]
+      summary: Lista as cobranças
+      description: Retorna as cobranças em ordem de criação, da mais antiga para a mais recente.
+      operationId: listarCobrancas
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: page
+          in: query
+          description: Número da página, começando em 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: Quantidade de cobranças por página.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Página de cobranças
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChargeList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Parâmetros de paginação inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: invalid_pagination
+                message: page deve ser maior que zero e page_size deve estar entre 1 e 100
+    post:
+      tags: [Cobranças]
+      summary: Cria uma cobrança fictícia
+      description: |
+        Cria uma cobrança aprovada por padrão. Use os parâmetros de simulação para
+        exercitar recusas, erros e atrasos. O valor é sempre informado em centavos.
+      operationId: criarCobranca
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: simulate
+          in: query
+          description: Resultado que deve ser simulado.
+          schema:
+            type: string
+            enum: [approved, declined, error]
+            default: approved
+        - name: delay_ms
+          in: query
+          description: Atraso antes da resposta, em milissegundos.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 60000
+        - name: Idempotency-Key
+          in: header
+          description: Chave opcional para impedir a criação duplicada.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChargeRequest"
+            examples:
+              produtoTexto:
+                summary: Identificador textual
+                value:
+                  product_id: "23"
+                  value: 650
+              produtoNumerico:
+                summary: Identificador numérico
+                value:
+                  product_id: 23
+                  value: 650
+      responses:
+        "200":
+          description: Cobrança já criada com a mesma Idempotency-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "201":
+          description: Cobrança criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "400":
+          description: JSON inválido ou corpo acima de 4 KB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Parâmetro ou campo inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Erro solicitado por meio da simulação
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: simulated_error
+                message: erro simulado
+  /v1/charges/{charge_id}:
+    get:
+      tags: [Cobranças]
+      summary: Consulta uma cobrança
+      operationId: obterCobranca
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: charge_id
+          in: path
+          required: true
+          description: Identificador retornado na criação.
+          schema:
+            type: string
+            pattern: ^chg_[0-9a-f]{12}$
+          example: chg_a1b2c3d4e5f6
+      responses:
+        "200":
+          description: Cobrança encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Cobrança não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+      description: Exigido apenas quando API_TOKEN estiver definida no servidor.
+  responses:
+    Unauthorized:
+      description: Token ausente ou inválido
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: unauthorized
+            message: token de autenticação ausente ou inválido
+  schemas:
+    CreateChargeRequest:
+      type: object
+      additionalProperties: false
+      required: [product_id, value]
+      properties:
+        product_id:
+          description: Identificador textual ou numérico do produto, normalizado para texto na resposta.
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 64
+            - type: integer
+        value:
+          type: integer
+          minimum: 1
+          maximum: 100000
+          description: Valor em centavos; 650 representa R$ 6,50.
+    Charge:
+      type: object
+      required: [charge_id, product_id, value, currency, status, created_at]
+      properties:
+        charge_id:
+          type: string
+          pattern: ^chg_[0-9a-f]{12}$
+          example: chg_a1b2c3d4e5f6
+        product_id:
+          type: string
+          example: "23"
+        value:
+          type: integer
+          example: 650
+        currency:
+          type: string
+          enum: [BRL]
+        status:
+          type: string
+          enum: [approved, declined]
+        reason:
+          type: string
+          enum: [card_declined]
+          description: Presente somente em cobranças recusadas.
+        created_at:
+          type: string
+          format: date-time
+    ChargeList:
+      type: object
+      required: [charges, page, page_size, total, total_pages]
+      properties:
+        charges:
+          type: array
+          items:
+            $ref: "#/components/schemas/Charge"
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 20
+        total:
+          type: integer
+          minimum: 0
+          example: 42
+        total_pages:
+          type: integer
+          minimum: 0
+          example: 3
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_json
+            - body_too_large
+            - unauthorized
+            - not_found
+            - invalid_product_id
+            - invalid_value
+            - invalid_simulate
+            - invalid_delay
+            - invalid_pagination
+            - simulated_error
+        message:
+          type: string
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
