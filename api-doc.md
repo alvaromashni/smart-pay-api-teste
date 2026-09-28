@@ -7,7 +7,7 @@ Esta API simula cobranças para você testar a comunicação HTTP entre a PCB e 
 | | |
 |---|---|
 | **URL** | `https://api-teste.redesmartshop.com` |
-| **Token** | `82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283` |
+| **Token** | `<SEU_TOKEN>` |
 | **Doc interativa** | `https://api-teste.redesmartshop.com/docs` (abre no navegador, dá para testar clicando) |
 
 Regras que importam para montar o request no PCB:
@@ -16,7 +16,7 @@ Regras que importam para montar o request no PCB:
 - **Valor é em centavos**, número inteiro. `650` = R$ 6,50. Não mande decimal (`6.50` é recusado).
 - As rotas que começam com `/v1` **exigem o token** no header:
   ```
-  Authorization: Bearer 82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283
+  Authorization: Bearer <SEU_TOKEN>
   ```
 - `/health` é aberta, não precisa de token.
 
@@ -51,7 +51,7 @@ Você escolhe o **resultado** pela query string `?simulate=`:
 ### Cobrança aprovada
 ```bash
 curl -X POST "https://api-teste.redesmartshop.com/v1/charges?simulate=approved" \
-  -H "Authorization: Bearer 82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283" \
+  -H "Authorization: Bearer <SEU_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"product_id":"23","value":650}'
 ```
@@ -63,7 +63,7 @@ Resposta (`201`):
 ### Cobrança recusada
 ```bash
 curl -X POST "https://api-teste.redesmartshop.com/v1/charges?simulate=declined" \
-  -H "Authorization: Bearer 82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283" \
+  -H "Authorization: Bearer <SEU_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"product_id":"23","value":650}'
 ```
@@ -75,7 +75,7 @@ Resposta (`201`):
 ### Erro do servidor (para testar como a PCB reage a falha)
 ```bash
 curl -X POST "https://api-teste.redesmartshop.com/v1/charges?simulate=error" \
-  -H "Authorization: Bearer 82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283" \
+  -H "Authorization: Bearer <SEU_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"product_id":"23","value":650}'
 ```
@@ -85,7 +85,7 @@ Resposta (`500`): `{"error":"simulated_error","message":"erro simulado"}`
 Segura 3 segundos antes de responder. Combine com qualquer `simulate`:
 ```bash
 curl -X POST "https://api-teste.redesmartshop.com/v1/charges?simulate=approved&delay_ms=3000" \
-  -H "Authorization: Bearer 82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283" \
+  -H "Authorization: Bearer <SEU_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"product_id":"23","value":650}'
 ```
@@ -96,13 +96,13 @@ curl -X POST "https://api-teste.redesmartshop.com/v1/charges?simulate=approved&d
 Listar as criadas:
 ```bash
 curl "https://api-teste.redesmartshop.com/v1/charges" \
-  -H "Authorization: Bearer 82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283"
+  -H "Authorization: Bearer <SEU_TOKEN>"
 ```
 
 Buscar uma pelo `charge_id` que veio na criação:
 ```bash
 curl "https://api-teste.redesmartshop.com/v1/charges/chg_a1b2c3d4e5f6" \
-  -H "Authorization: Bearer 82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283"
+  -H "Authorization: Bearer <SEU_TOKEN>"
 ```
 
 ## Se algo der errado
