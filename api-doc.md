@@ -10,7 +10,7 @@ Esta API simula cobranças para você testar a comunicação HTTP entre a PCB e 
 | **Token** | `82a4e4f4e3eac13a75f82f532b891e9426cce6de2fee2283` |
 | **Doc interativa** | `https://api-teste.redesmartshop.com/docs` (abre no navegador, dá para testar clicando) |
 
-Regras que importam para montar o request no ESP32:
+Regras que importam para montar o request no PCB:
 
 - Tudo é **JSON**.
 - **Valor é em centavos**, número inteiro. `650` = R$ 6,50. Não mande decimal (`6.50` é recusado).
