@@ -6,6 +6,8 @@ info:
     API descartável de bancada para testar a comunicação entre uma PCB com ESP32
     e a nuvem. Não realiza pagamentos reais e mantém todo o estado em memória.
 servers:
+  - url: /
+    description: Este servidor (o mesmo endereço do /docs)
   - url: http://localhost:8080
     description: Servidor local
 tags:
