@@ -66,6 +66,20 @@ O header opcional `Idempotency-Key` evita duplicidade. Quando a chave já foi ut
 {"charges":[],"page":1,"page_size":20,"total":0,"total_pages":0}
 ```
 
+### Crédito da máquina
+
+Fluxo para a PCB: consultar o crédito, pedir a venda (reserva o valor) e informar o resultado. Detalhes e exemplos em [`api-doc.md`](api-doc.md), seção 4.
+
+| Método e rota | Uso |
+|---|---|
+| `GET /v1/machines/{machine_id}/credit` | Crédito livre da máquina (`available`, `value` em centavos) |
+| `PUT /v1/machines/{machine_id}/credit` | Simula pagamento: define o crédito (`{"value":500}`) |
+| `POST /v1/machines/{machine_id}/vends` | Pede a venda: `201 authorized` reserva o valor; `402 insufficient_credit` não reserva |
+| `GET /v1/vends/{vend_id}` | Consulta a venda |
+| `POST /v1/vends/{vend_id}/result` | `{"result":"success"}` consome; `"failed"` devolve o crédito |
+
+A reserva expira em 60 s (ajustável com `?hold_ms=`) e o crédito volta se o resultado não chegar.
+
 ### Saúde
 
 `GET /health` retorna:

@@ -105,6 +105,76 @@ curl "https://api-teste.redesmartshop.com/v1/charges/chg_a1b2c3d4e5f6" \
   -H "Authorization: Bearer <SEU_TOKEN>"
 ```
 
+## 4. Crédito da máquina (fluxo de venda)
+
+Cada máquina tem um **ID único** na URL. O seu ESP32 usa `99999`. O crédito é fictício e fica em memória.
+
+O fluxo tem 3 passos:
+
+1. **Monitorar o crédito.** O ESP32 consulta de tempos em tempos (ex.: a cada 2 s) se há crédito e quanto.
+2. **Pedir a venda.** Com o produto escolhido, o ESP32 pede a venda com o preço. Se o crédito cobre, a API **reserva** o valor e responde `authorized`: pode dispensar. Se não cobre, responde `402` e nada muda.
+3. **Informar o resultado.** Depois de tentar dispensar, o ESP32 avisa: `success` (o produto saiu, o crédito é consumido) ou `failed` (não saiu, o crédito volta).
+
+Se o passo 3 não chegar em 60 s (ex.: a placa reiniciou), a reserva expira e o crédito volta sozinho.
+
+### Consultar o crédito
+```bash
+curl https://api-teste.redesmartshop.com/v1/machines/99999/credit \
+  -H "Authorization: Bearer <SEU_TOKEN>"
+```
+Resposta (`200`):
+```json
+{"machine_id":"99999","available":true,"value":500,"held":0,"currency":"BRL","updated_at":"2026-10-05T13:00:00Z"}
+```
+- `available`: `true` se há crédito.
+- `value`: crédito livre, **em centavos** (`500` = R$ 5,00).
+- `held`: valor reservado por uma venda que ainda aguarda resultado.
+
+Uma máquina que nunca recebeu crédito responde `available:false` e `value:0`.
+
+### Simular um pagamento (carregar crédito)
+Isso é feito do PC, pelo `/docs` ou por curl. É o que o app de pagamento fará no sistema real.
+```bash
+curl -X PUT https://api-teste.redesmartshop.com/v1/machines/99999/credit \
+  -H "Authorization: Bearer <SEU_TOKEN>" -H "Content-Type: application/json" \
+  -d '{"value":500}'
+```
+Define o crédito livre da máquina. `{"value":0}` zera.
+
+### Pedir a venda do produto escolhido
+```bash
+curl -X POST https://api-teste.redesmartshop.com/v1/machines/99999/vends \
+  -H "Authorization: Bearer <SEU_TOKEN>" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: 99999-000123" \
+  -d '{"product_id":"23","value":350}'
+```
+Autorizada (`201`). **Pode dispensar.** Guarde o `vend_id`:
+```json
+{"vend_id":"vnd_e402dc337732","machine_id":"99999","product_id":"23","value":350,"status":"authorized","created_at":"...","expires_at":"...","credit_remaining":150}
+```
+Crédito insuficiente (`402`). **Não dispense.**
+```json
+{"error":"insufficient_credit","message":"crédito insuficiente para este produto","machine_id":"99999","value":150,"required":350}
+```
+O `Idempotency-Key` é opcional, mas recomendado. Gere um por venda e repita o mesmo se precisar reenviar após um timeout: a API devolve a mesma venda (`200`) sem descontar de novo.
+
+### Informar o resultado
+```bash
+curl -X POST https://api-teste.redesmartshop.com/v1/vends/vnd_e402dc337732/result \
+  -H "Authorization: Bearer <SEU_TOKEN>" -H "Content-Type: application/json" \
+  -d '{"result":"success"}'
+```
+- `success`: o produto saiu. Status `completed`; o crédito fica consumido.
+- `failed`: o produto não saiu. Status `refunded`; o crédito volta para a máquina.
+
+Reenviar o mesmo resultado responde `200` sem efeito. Se a reserva já expirou, responde `409 vend_expired`, e o crédito já voltou.
+
+### Regras para o firmware
+- **Sem resposta, sem produto.** Se a API não respondeu ou deu erro no passo 2, **não dispense**.
+- **Só dispense com `201` (ou `200` do reenvio) e `status:"authorized"`.**
+- **Sempre mande o resultado.** Se não mandar, o crédito volta em 60 s e o cliente pode comprar de novo sem pagar.
+- Valores sempre inteiros em centavos.
+
 ## Se algo der errado
 
 Todo erro vem no mesmo formato: `{"error":"...","message":"..."}`. Os mais comuns:

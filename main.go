@@ -80,6 +80,7 @@ type application struct {
 	sleep           func(time.Duration)
 	now             func() time.Time
 	logger          *slog.Logger
+	credit          *creditStore
 }
 
 func newApplication(token string, logger *slog.Logger) *application {
@@ -93,6 +94,7 @@ func newApplication(token string, logger *slog.Logger) *application {
 		sleep:           time.Sleep,
 		now:             time.Now,
 		logger:          logger,
+		credit:          newCreditStore(),
 	}
 }
 
@@ -104,6 +106,11 @@ func (app *application) routes() http.Handler {
 	mux.HandleFunc("GET /v1/charges", app.listCharges)
 	mux.HandleFunc("POST /v1/charges", app.createCharge)
 	mux.HandleFunc("GET /v1/charges/{charge_id}", app.getCharge)
+	mux.HandleFunc("GET /v1/machines/{machine_id}/credit", app.getCredit)
+	mux.HandleFunc("PUT /v1/machines/{machine_id}/credit", app.setCredit)
+	mux.HandleFunc("POST /v1/machines/{machine_id}/vends", app.createVend)
+	mux.HandleFunc("GET /v1/vends/{vend_id}", app.getVend)
+	mux.HandleFunc("POST /v1/vends/{vend_id}/result", app.vendResult)
 	mux.HandleFunc("/", app.notFound)
 	return app.logRequest(app.authenticate(mux))
 }

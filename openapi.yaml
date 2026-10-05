@@ -9,6 +9,10 @@ servers:
   - url: http://localhost:8080
     description: Servidor local
 tags:
+  - name: Crédito da máquina
+    description: |
+      Fluxo do ESP32: consultar o crédito da máquina, pedir a venda do produto escolhido
+      (reserva o valor) e informar se o produto saiu (consome) ou não (devolve).
   - name: Cobranças
   - name: Infraestrutura
 paths:
@@ -185,7 +189,250 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /v1/machines/{machine_id}/credit:
+    parameters:
+      - $ref: "#/components/parameters/MachineId"
+    get:
+      tags: [Crédito da máquina]
+      summary: Consulta o crédito disponível na máquina
+      description: |
+        O ESP32 chama periodicamente. `available` indica se há crédito; `value` é o crédito
+        livre em centavos. Máquina nunca vista responde com crédito zero.
+      operationId: consultarCredito
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        "200":
+          description: Crédito atual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credit"
+              example:
+                machine_id: "99999"
+                available: true
+                value: 500
+                held: 0
+                currency: BRL
+                updated_at: "2026-10-05T13:00:00Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Invalid"
+    put:
+      tags: [Crédito da máquina]
+      summary: Simula um pagamento finalizado, definindo o crédito da máquina
+      description: Uso de teste. Define o crédito livre (0 zera); reservas em aberto não são alteradas.
+      operationId: definirCredito
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [value]
+              properties:
+                value:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+                  description: Crédito em centavos; 500 representa R$ 5,00.
+            example:
+              value: 500
+      responses:
+        "200":
+          description: Crédito definido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Credit"
+        "400":
+          description: JSON inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /v1/machines/{machine_id}/vends:
+    parameters:
+      - $ref: "#/components/parameters/MachineId"
+    post:
+      tags: [Crédito da máquina]
+      summary: Pede a venda do produto escolhido (reserva o crédito)
+      description: |
+        Se o crédito livre cobre `value`, reserva o valor e responde 201 `authorized`: o ESP32 pode
+        dispensar. Senão responde 402 e nada é reservado. A reserva expira em `hold_ms`
+        (padrão 60000) e o crédito volta se o resultado não for informado. Envie `Idempotency-Key`
+        para reenviar com segurança após timeout.
+      operationId: pedirVenda
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - name: hold_ms
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1000
+            maximum: 600000
+            default: 60000
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          example: esp32-99999-000123
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChargeRequest"
+            example:
+              product_id: "23"
+              value: 350
+      responses:
+        "201":
+          description: Venda autorizada, valor reservado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vend"
+        "200":
+          description: Mesma Idempotency-Key; devolve a venda já criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vend"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: Crédito insuficiente; nada foi reservado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum: [insufficient_credit]
+                  message:
+                    type: string
+                  machine_id:
+                    type: string
+                  value:
+                    type: integer
+                    description: Crédito livre atual.
+                  required:
+                    type: integer
+                    description: Valor pedido.
+              example:
+                error: insufficient_credit
+                message: crédito insuficiente para este produto
+                machine_id: "99999"
+                value: 150
+                required: 350
+        "422":
+          $ref: "#/components/responses/Invalid"
+  /v1/vends/{vend_id}:
+    get:
+      tags: [Crédito da máquina]
+      summary: Consulta uma venda
+      operationId: obterVenda
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/VendId"
+      responses:
+        "200":
+          description: Venda encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vend"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Venda não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /v1/vends/{vend_id}/result:
+    post:
+      tags: [Crédito da máquina]
+      summary: Informa se o produto foi dispensado
+      description: |
+        `success` consome a reserva; `failed` devolve o crédito à máquina. Reenviar o mesmo resultado
+        responde 200 sem efeito. Resultado diferente após finalizada, ou após a reserva expirar, responde 409.
+      operationId: informarResultado
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/VendId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [result]
+              properties:
+                result:
+                  type: string
+                  enum: [success, failed]
+            example:
+              result: success
+      responses:
+        "200":
+          description: Venda finalizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vend"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Venda não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Reserva expirada (vend_expired) ou venda já finalizada com outro resultado (vend_already_finished)
+        "422":
+          $ref: "#/components/responses/Invalid"
 components:
+  parameters:
+    MachineId:
+      name: machine_id
+      in: path
+      required: true
+      description: ID único da máquina (1 a 32 letras, números, - ou _).
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,32}$
+      example: "99999"
+    VendId:
+      name: vend_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^vnd_[0-9a-f]{12}$
+      example: vnd_a1b2c3d4e5f6
   securitySchemes:
     bearerAuth:
       type: http
@@ -193,6 +440,12 @@ components:
       bearerFormat: token
       description: Exigido apenas quando API_TOKEN estiver definida no servidor.
   responses:
+    Invalid:
+      description: Parâmetro ou campo inválido
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Token ausente ou inválido
       content:
@@ -203,6 +456,62 @@ components:
             error: unauthorized
             message: token de autenticação ausente ou inválido
   schemas:
+    Credit:
+      type: object
+      required: [machine_id, available, value, held, currency]
+      properties:
+        machine_id:
+          type: string
+          example: "99999"
+        available:
+          type: boolean
+          description: true quando há crédito livre (value > 0).
+        value:
+          type: integer
+          description: Crédito livre em centavos.
+          example: 500
+        held:
+          type: integer
+          description: Valor reservado por vendas aguardando resultado.
+          example: 0
+        currency:
+          type: string
+          enum: [BRL]
+        updated_at:
+          type: string
+          format: date-time
+    Vend:
+      type: object
+      required: [vend_id, machine_id, product_id, value, status, created_at, expires_at, credit_remaining]
+      properties:
+        vend_id:
+          type: string
+          example: vnd_a1b2c3d4e5f6
+        machine_id:
+          type: string
+          example: "99999"
+        product_id:
+          type: string
+          example: "23"
+        value:
+          type: integer
+          example: 350
+        status:
+          type: string
+          enum: [authorized, completed, refunded, expired]
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        credit_remaining:
+          type: integer
+          description: Crédito livre da máquina logo após esta operação.
+          example: 150
     CreateChargeRequest:
       type: object
       additionalProperties: false
@@ -289,6 +598,12 @@ components:
             - invalid_delay
             - invalid_pagination
             - simulated_error
+            - invalid_machine_id
+            - invalid_hold
+            - invalid_result
+            - insufficient_credit
+            - vend_expired
+            - vend_already_finished
         message:
           type: string
     Health:
